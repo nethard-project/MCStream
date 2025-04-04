@@ -1,11 +1,11 @@
-pub mod types;
-pub mod header;
 pub mod chunk;
 pub mod compression;
 pub mod error;
-pub mod palette;
+pub mod header;
 pub mod nbt;
 pub mod packer;
+pub mod palette;
+pub mod types;
 pub mod unpacker;
 pub mod utils;
 
@@ -27,4 +27,4 @@ pub enum CompressionType {
     Zstandard = 1,
     LZ4 = 2,
     Brotli = 3,
-} 
+}

@@ -9,7 +9,7 @@ pub fn validate_nbt(data: &[u8]) -> Result<(), McStreamError> {
     if data.is_empty() {
         return Ok(());
     }
-    
+
     // 检查第一个字节是否为有效的NBT标签类型
     match data[0] {
         // 有效的标签类型：0-12
@@ -28,7 +28,7 @@ pub enum NbtTagType {
     Int = 3,
     Long = 4,
     Float = 5,
-    Double = 6, 
+    Double = 6,
     ByteArray = 7,
     String = 8,
     List = 9,
@@ -39,7 +39,7 @@ pub enum NbtTagType {
 
 impl TryFrom<u8> for NbtTagType {
     type Error = McStreamError;
-    
+
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(NbtTagType::End),
@@ -55,7 +55,10 @@ impl TryFrom<u8> for NbtTagType {
             10 => Ok(NbtTagType::Compound),
             11 => Ok(NbtTagType::IntArray),
             12 => Ok(NbtTagType::LongArray),
-            _ => Err(McStreamError::NbtError(format!("无效的NBT标签类型: {}", value))),
+            _ => Err(McStreamError::NbtError(format!(
+                "无效的NBT标签类型: {}",
+                value
+            ))),
         }
     }
 }
@@ -65,6 +68,6 @@ pub fn get_nbt_root_type(data: &[u8]) -> Result<NbtTagType, McStreamError> {
     if data.is_empty() {
         return Err(McStreamError::NbtError("NBT数据为空".to_string()));
     }
-    
+
     NbtTagType::try_from(data[0])
-} 
+}

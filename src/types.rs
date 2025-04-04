@@ -12,7 +12,7 @@ impl BlockPos {
     pub fn new(x: i32, y: i32, z: i32) -> Self {
         Self { x, y, z }
     }
-    
+
     /// 获取该位置所在的区块坐标
     pub fn chunk_pos(&self) -> ChunkPos {
         ChunkPos {
@@ -20,7 +20,7 @@ impl BlockPos {
             z: self.z >> 4,
         }
     }
-    
+
     /// 获取相对于所在区块的局部坐标
     pub fn local_pos(&self) -> LocalBlockPos {
         LocalBlockPos {
@@ -56,7 +56,7 @@ impl LocalBlockPos {
     pub fn new(x: u8, y: u16, z: u8) -> Self {
         Self { x, y, z }
     }
-    
+
     /// 将编码后的Y坐标转换为实际的Y坐标
     pub fn actual_y(&self) -> i32 {
         self.y as i32 - 64
@@ -67,16 +67,16 @@ impl LocalBlockPos {
 #[derive(Debug, Clone)]
 pub struct ChunkData {
     pub pos: ChunkPos,
-    pub palette: Vec<String>,  // 方块ID列表
-    pub blocks: Vec<Block>,    // 非空气方块列表
+    pub palette: Vec<String>, // 方块ID列表
+    pub blocks: Vec<Block>,   // 非空气方块列表
 }
 
 /// 方块数据
 #[derive(Debug, Clone)]
 pub struct Block {
-    pub palette_index: u16,    // 调色板索引
-    pub pos: LocalBlockPos,    // 局部坐标
-    pub nbt: Option<Vec<u8>>,  // NBT数据（如果有）
+    pub palette_index: u16,   // 调色板索引
+    pub pos: LocalBlockPos,   // 局部坐标
+    pub nbt: Option<Vec<u8>>, // NBT数据（如果有）
 }
 
 /// 区块索引条目
@@ -102,6 +102,4 @@ pub struct McsHeader {
 pub struct McsData {
     pub header: McsHeader,
     pub chunks: HashMap<ChunkPos, ChunkData>,
-    pub data_hash: [u8; 32],
-    pub signature: Option<Vec<u8>>,
-} 
+}
