@@ -1,175 +1,178 @@
-### **MCStream (MCS) 格式规范文档**  
-**版本 1.0**  
+# MCStream (MCS) 格式实现
 
----
+MCStream是一种为Minecraft建筑设计的高效二进制流式存储格式，支持按需加载、低内存占用和完整的NBT兼容性。
 
-## **1. 概述**  
-**MCStream**（简称 MCS）是一种为 Minecraft 建筑设计的高效二进制流式存储格式，支持按需加载、低内存占用和完整的 NBT 兼容性。  
-**核心特性**：  
-- **流式分块**：按区块独立压缩，支持随机读取。  
-- **紧凑编码**：调色板复用、局部坐标压缩、NBT 存储。  
+## 核心特性
 
----
+- **流式分块**：按区块独立压缩，支持随机读取
+- **紧凑编码**：调色板复用、局部坐标压缩、NBT存储
+- **多种压缩算法**：支持Zstandard、LZ4、Brotli和无压缩模式
+- **数据校验**：内置SHA-256哈希校验和可选数字签名
+- **高性能**：并行压缩和解压，低内存开销
 
-## **2. 文件结构**  
-文件由三部分组成，按顺序排列：  
-`Header` → `Chunk Index Table` → `Chunk Data Stream` → `Footer`  
-**最大文件大小**：4GB（受 `uint32` 偏移限制）。  
+## 编译与安装
 
----
+确保已安装Rust工具链（1.56.0或更高版本），然后执行：
 
-### **2.1 头部 (Header)**  
-| 偏移 | 字段名           | 类型/长度         | 说明                                                                |
-|------|------------------|-------------------|---------------------------------------------------------------------|
-| 0x00 | Magic            | `byte[8]`         | 固定为 `MCSTRM\x00`（十六进制：`4D 43 53 54 52 4D 00 00`）           |
-| 0x08 | Version          | `uint16`（大端）  | 格式版本，当前为 `0x0100`（1.0）                                     |
-| 0x0A | Compression      | `uint8`           | 压缩算法：<br>`0`=无, `1`=Zstandard, `2`=LZ4, `3`=brotli            |
-| 0x0B | Flags            | `uint8`           | 位标记：<br>Bit 0=是否含数字签名（1=是），其余位保留（必须为0）      |
-| 0x0C | IndexTableOffset | `uint32`（小端）  | 区块索引表起始偏移（从文件头开始计算）                               |
-| 0x10 | Reserved         | `byte[4]`         | 预留字段，必须为 `0x00`                                              |
+```bash
+# 克隆仓库
+git clone https://github.com/nethard/mcstream.git
+cd mcstream
 
----
+# 编译
+cargo build --release
 
-### **2.2 区块索引表 (Chunk Index Table)**  
-从 `IndexTableOffset` 开始，结构如下：  
-```plaintext
-[条目数: uint32 (小端)]
-[
-  {
-    ChunkX: int32,         // 区块 X 坐标（小端）
-    ChunkZ: int32,         // 区块 Z 坐标（小端）
-    DataOffset: uint32,    // 区块数据起始偏移（从文件头开始，小端）
-    CompressedSize: uint32 // 压缩后数据长度（字节，小端）
-  }, 
-  ... // 每个条目占用 16 字节
-]
+# 安装
+cargo install --path .
 ```
 
----
+## 命令行使用
 
-### **2.3 区块数据流 (Chunk Data Stream)**  
-每个区块数据独立压缩，解压后结构如下：  
-#### **解压后的区块数据格式**  
-```plaintext
-// --- 调色板 (Palette) ---
-PaletteSize: uint16 (小端)
-[PaletteEntry] × PaletteSize
-  PaletteEntry: length-prefixed string（UTF8）
-    - uint16 (小端) 表示字符串长度
-    - 字符串内容（不含空终止符）
+### 打包建筑数据（JSON格式）为MCS文件
 
-// --- 方块数组 (Blocks) ---
-BlockCount: uint32 (小端)
-[Block] × BlockCount
-  Block 结构：
-    - PaletteIndex: uint16 (小端)  // 调色板索引（0~PaletteSize-1）
-    - X: byte                     // 局部 X 坐标（0～15），高位必须为0
-    - Y: uint16 (小端)            // 编码后的 Y 坐标（实际 Y 值 + 64，范围 0～383 → 支持 -64～319）
-    - Z: byte                     // 局部 Z 坐标（0～15），高位必须为0
-    - Flags: uint8                // 标志位：Bit 0=是否含NBT，其余位保留（必须为0）
-
-// --- NBT 数据区 ---
-NBTCount: uint32 (小端)
-[NBTData] × NBTCount
-  NBTData 结构：
-    - Length: uint32 (小端)       // NBT数据长度（字节）
-    - Data: byte[Length]         // 二进制NBT数据（Minecraft官方格式）
+```bash
+mcs pack -i building.json -o building.mcs -c zstd
 ```
 
-#### **隐式空气规则**  
-- **调色板**：禁止包含 `minecraft:air`，否则视为格式错误。  
-- **方块数组**：仅存储非空气方块，未提及的坐标默认视为空气。  
-- **NBT数据**：若方块的 `Flags & 0x01 == 1`，则需按顺序读取对应的NBT数据。
+压缩算法选项：
+- `none`：无压缩
+- `zstd`：Zstandard压缩（默认，兼顾速度与压缩率）
+- `lz4`：LZ4压缩（高速但压缩率较低）
+- `brotli`：Brotli压缩（高压缩率但较慢）
 
----
+### 解包MCS文件为JSON格式
 
-### **2.4 尾部校验 (Footer)**  
-| 字段名       | 类型/长度          | 说明                                   |
-|--------------|--------------------|----------------------------------------|
-| DataHash     | `byte[32]`         | 全文件（除Footer外）的SHA-256哈希     |
-| Signature    | 可变长度（可选）   | 数字签名，仅当Header.Flags.Bit0=1时存在：<br>- Length: uint16 (小端) <br>- Data: byte[Length] |  
-
----
-
-## **3. 坐标编码规则**  
-
-### **3.1 局部坐标编码**
-每个方块的局部坐标使用以下格式：
-
-| 字段         | 类型       | 范围             | 说明                                 |
-|--------------|------------|------------------|--------------------------------------|
-| Local X      | byte       | 0 ~ 15           | 局部 X 坐标，高位必须为0             |
-| Local Y      | uint16 (小端)| 0 ~ 383         | 编码后的 Y 坐标（实际 Y 值 + 64，范围 -64 ~ 319） |
-| Local Z      | byte       | 0 ~ 15           | 局部 Z 坐标，高位必须为0             |
-
-*编码示例*：  
-- 若方块位于 (X, Y, Z) = (0, -64, 0) 则编码为：  
-  - Local X = 0，Local Y = 0x0000（小端），Local Z = 0  
-- 若方块位于 (15, 319, 15) 则编码为：  
-  - Local X = 15，Local Y = 0x7F01（小端，319+64=383=0x017F），Local Z = 15  
-
----
-
-## **4. 导入/导出流程**  
-### **4.1 导出流程**  
-1. **分割区块**：将建筑按 **16×16×384** 的区块分割（Y 范围 -64 ~ 319）。  
-2. **生成调色板**：统计区块内所有非空气方块的 ID，生成调色板（禁止包含空气）。  
-3. **编码方块**：  
-   - 对每个非空气方块，计算局部坐标：  
-     - Local X（0～15）直接存储为 `byte`  
-     - Local Y：将实际 Y 值加 64，存储为 `uint16`（小端）  
-     - Local Z（0～15）直接存储为 `byte`  
-4. **压缩数据**：按格式编码并压缩每个区块。  
-5. **构建索引表**：记录每个区块的偏移、大小（`DataOffset`、`CompressedSize` 等）。  
-6. **计算校验数据**：生成文件尾部的哈希和（可选）签名。
-
-### **4.2 导入流程**  
-1. **读取头部**：验证 Magic 和版本号，获取压缩算法和索引表位置。  
-2. **加载索引表**：解析所有区块条目。  
-3. **流式解压**：根据索引表的 `DataOffset` 和 `CompressedSize` 按需解压区块。  
-4. **解码方块**：  
-   - 直接读取 X（1字节）、Y（2字节小端）、Z（1字节）。  
-   - 将 Local Y 解码为实际值：Y = Y_encoded - 64  
-
----
-
-## **5. 示例文件片段**  
-### **解压后的区块数据（Hex视图）**  
-```plaintext
-// --- 调色板 ---
-00000000: 02 00                    // PaletteSize = 2
-00000002: 0E 00 6D 69 6E 65 63 72 61 66 74 3A 73 74 6F 6E 65   // "minecraft:stone"
-00000012: 0F 00 6D 69 6E 65 63 72 61 66 74 3A 63 68 65 73 74   // "minecraft:chest"
-
-// --- 方块数组 ---
-00000021: 02 00 00 00             // BlockCount = 2
-// 方块 [0]（局部坐标 (0, -64, 0)）
-00000025: 00 00                   // PaletteIndex = 0
-00000027: 00                      // X=0
-00000028: 00 00                   // Y=0x0000（小端）
-0000002A: 00                      // Z=0
-0000002B: 00                      // Flags = 0
-// 方块 [1]（局部坐标 (15, 319, 15)）
-0000002C: 01 00                   // PaletteIndex = 1
-0000002E: 0F                      // X=15
-0000002F: 7F 01                   // Y=0x017F（小端，319+64=383）
-00000031: 0F                      // Z=15
-00000032: 01                      // Flags = 1（含NBT）
-
-// --- NBT 数据区 ---
-00000033: 01 00 00 00             // NBTCount = 1
-00000037: 12 00 00 00             // Length = 18 字节
-0000003B: 0A 00 09 49 74 65 6D 73 ...   // 箱子 NBT 数据
+```bash
+mcs unpack -i building.mcs -o building.json
 ```
 
----
+### 查看MCS文件信息
 
-## **6. 兼容性与限制**  
-- **Minecraft版本**：支持 1.18+（Y 范围 -64 ~ 319）。  
-- **最大区块数**：受限于 `uint32`，最多 4,294,967,295 个区块。  
-- **压缩算法**：推荐 Zstandard（压缩率与速度平衡）。  
+```bash
+# 基本信息
+mcs info -f building.mcs
 
----
+# 详细信息
+mcs info -f building.mcs -v
+```
 
-**文档修订日期**：2025年4月2日  
-**作者**：Nethard Studio
+## 程序API使用
+
+### 打包示例
+
+```rust
+use mcstream::{McsEncoder, CompressionType, McStreamError};
+
+fn main() -> Result<(), McStreamError> {
+    // 创建编码器
+    let mut encoder = McsEncoder::new(CompressionType::Zstandard);
+    
+    // 添加方块
+    encoder.add_block("minecraft:stone".to_string(), 0, 0, 0, None)?;
+    
+    // 添加带NBT数据的方块
+    let nbt_data = serde_json::to_vec(&serde_json::json!({
+        "Items": [{"id": "minecraft:diamond", "Count": 1}]
+    }))?;
+    encoder.add_block("minecraft:chest".to_string(), 1, 0, 0, Some(nbt_data))?;
+    
+    // 批量添加相同类型的方块
+    let positions = vec![(2, 0, 0), (2, 0, 1), (2, 0, 2)];
+    encoder.add_blocks("minecraft:oak_planks".to_string(), &positions, None)?;
+    
+    // 写入文件
+    encoder.write_to_file("output.mcs")?;
+    
+    Ok(())
+}
+```
+
+### 解包示例
+
+```rust
+use mcstream::{McsDecoder, McStreamError};
+
+fn main() -> Result<(), McStreamError> {
+    // 从文件加载
+    let decoder = McsDecoder::from_file("input.mcs")?;
+    
+    // 获取文件头信息
+    let header = decoder.header();
+    println!("版本: {}.{}", header.version >> 8, header.version & 0xFF);
+    
+    // 获取区块数据
+    for (pos, chunk) in decoder.get_chunks() {
+        println!("区块 [{}, {}] 包含 {} 个方块", pos.x, pos.z, chunk.blocks.len());
+        
+        // 处理方块
+        for block in &chunk.blocks {
+            let block_id = &chunk.palette[block.palette_index as usize];
+            let global_x = (pos.x * 16) + block.pos.x as i32;
+            let global_y = block.pos.actual_y(); // 转换为实际Y坐标
+            let global_z = (pos.z * 16) + block.pos.z as i32;
+            
+            println!("方块 {} 位于 [{}, {}, {}]", block_id, global_x, global_y, global_z);
+        }
+    }
+    
+    Ok(())
+}
+```
+
+## JSON格式规范
+
+输入和输出的JSON格式遵循以下结构：
+
+```json
+{
+  "format": "mcs",
+  "version": "1.0",
+  "blocks": [
+    {
+      "id": "minecraft:stone",
+      "pos": [0, 0, 0]
+    },
+    {
+      "id": "minecraft:chest",
+      "pos": [1, 0, 0],
+      "nbt": { /* 可选的NBT数据 */ }
+    }
+  ]
+}
+```
+
+注意：
+- 方块坐标使用 `pos` 字段作为数组，按顺序表示 [x, y, z]
+- 空气方块 (minecraft:air) 会自动被忽略
+- NBT数据为可选字段，格式为标准JSON对象
+
+## 格式说明
+
+MCStream格式基于二进制结构，由以下组件组成：
+
+- **头部**：8字节魔数 + 2字节版本号 + 压缩和标志字段
+- **区块索引表**：每个区块的位置、大小和坐标信息
+- **区块数据**：调色板编码的方块数据，按区块独立压缩
+- **SHA-256哈希**：文件数据的完整性校验
+- **签名数据**：可选的数字签名（如果有）
+
+更详细的格式规范请参见[格式规范文档](FORMAT.md)。
+
+## 性能优化
+
+MCStream格式针对Minecraft建筑数据进行了多项性能优化：
+
+- **区块级并行处理**：使用Rayon实现压缩和解压的并行计算
+- **内存优化**：使用流式读写减少内存占用
+- **调色板复用**：相同方块ID在一个区块内只存储一次
+- **坐标压缩**：使用区块局部坐标减少每个方块的存储开销
+- **选择性NBT存储**：只有需要NBT数据的方块才会包含额外数据
+
+## 许可证
+
+此项目采用MIT许可证。详情见[LICENSE](LICENSE)文件。
+
+## 鸣谢
+
+- [Nethard Studio](https://github.com/nethard) - 项目维护者
+- 所有贡献者和测试者 
