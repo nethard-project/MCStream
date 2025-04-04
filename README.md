@@ -170,9 +170,9 @@ MCStream格式针对Minecraft建筑数据进行了多项性能优化：
 
 ## 许可证
 
-此项目采用MIT许可证。详情见[LICENSE](LICENSE)文件。
+此项目采用GNU Affero General Public License v3.0许可证。详情见[LICENSE](LICENSE)文件。
 
 ## 鸣谢
 
-- [Nethard Studio](https://github.com/nethard) - 项目维护者
+- [Nethard Studio](https://github.com/nethard-project) - 项目维护者
 - 所有贡献者和测试者 
